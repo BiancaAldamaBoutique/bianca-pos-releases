@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://*.supabase.co http://localhost:* http://127.0.0.1:*">
+  <title>Fotos Bianca</title>
+  <style>
+    body{font-family:system-ui;margin:0;background:#f7f2ef;color:#2b2421}.c{max-width:560px;margin:auto;padding:20px}.card{background:white;border-radius:16px;padding:18px;box-shadow:0 8px 28px #4b302018}button,label{display:block;width:100%;box-sizing:border-box}button{border:0;border-radius:12px;padding:14px;background:#6f3f37;color:white;font-weight:700;margin-top:12px}input{margin-top:12px}.muted{color:#746763;font-size:14px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}.grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px}.error{color:#9b1c1c}.ok{color:#27633b}
+  </style>
+</head>
+<body>
+  <main class="c"><div class="card"><h1>Fotos de la prenda</h1><p id="estado" class="muted">Vinculando con la caja...</p><section id="prenda" hidden><h2 id="titulo"></h2><p class="muted">Toma frente y espalda. Agrega detalles si la tela, bordado o cierre lo necesitan.</p><label><b>Tomar o elegir fotos</b><input id="archivos" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple></label><div id="miniaturas" class="grid"></div><button id="terminar">Terminar fotos de esta prenda</button></section><button id="reintentar" hidden>Reintentar</button></div></main>
+  <script>
+    const estado=document.querySelector('#estado'),prenda=document.querySelector('#prenda'),titulo=document.querySelector('#titulo'),archivos=document.querySelector('#archivos'),miniaturas=document.querySelector('#miniaturas'),terminar=document.querySelector('#terminar'),reintentar=document.querySelector('#reintentar');
+    const fragmento=new URLSearchParams(location.hash.slice(1));
+    const codigo=fragmento.get('vinculo');
+    const apiEntrada=fragmento.get('api')||localStorage.getItem('bianca_foto_api')||'';
+    function validarApi(valor){const u=new URL(valor);const local=['localhost','127.0.0.1'].includes(u.hostname);if((u.protocol!=='https:'&&!local)||(!u.hostname.endsWith('.supabase.co')&&!local)||!u.pathname.endsWith('/functions/v1/sync-caja'))throw new Error('El enlace no apunta al servidor de Bianca');u.search='';u.hash='';return u}
+    let api;try{api=validarApi(apiEntrada);localStorage.setItem('bianca_foto_api',api.toString())}catch{api=null}
+    const llaveSesion=api?'bianca_foto_sesion:'+api.origin:'';
+    let sesion=llaveSesion?(localStorage.getItem(llaveSesion)||''):'',borrador='',autorizacion='',subiendo=false,aviso='';
+    const decir=(m,clase='muted')=>{estado.textContent=m;estado.className=clase};
+    async function llamar(accion,cuerpo,token=sesion){if(!api)throw new Error('Este enlace no trae el servidor de Bianca');const r=await fetch(api.toString()+'?accion='+accion,{method:'POST',headers:{'content-type':'application/json',...(token?{'x-foto-session':token}:{})},body:JSON.stringify(cuerpo||{})});const j=await r.json().catch(()=>({}));if(!r.ok)throw fallo(j,r.status);return j}
+    function fallo(j,status){const e=new Error(j.error||('Error '+status));e.status=status;return e}
+    const definitivo=e=>[409,410,413,415,422].includes(e.status)||(e.status===429&&/maximo de 8/.test(e.message));
+    async function vincular(){if(!codigo&&sesion)return;if(!codigo)throw new Error('Este enlace no trae un codigo de vinculacion');const r=await llamar('canjear_vinculo',{codigo},'');sesion=r.token;localStorage.setItem(llaveSesion,sesion);history.replaceState(null,'',location.pathname)}
+    async function pulso(){if(subiendo)return;const r=await llamar('estado_fotos_movil',{});if(!r.borrador){borrador='';autorizacion='';prenda.hidden=true;decir('Telefono vinculado. Abre una prenda en el POS.'+aviso,aviso?'error':'ok');return}borrador=r.borrador.id;autorizacion=r.autorizacion;titulo.textContent=[r.borrador.tipo,r.borrador.estilo,r.borrador.color].filter(Boolean).join(' · ');prenda.hidden=false;decir(r.borrador.fotos+' fotos recibidas por la caja'+aviso,aviso?'error':'ok')}
+    async function abrirDb(){return await new Promise((ok,no)=>{const r=indexedDB.open('bianca-fotos:'+api.hostname,1);r.onupgradeneeded=()=>r.result.createObjectStore('pendientes',{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+    async function guardarPendiente(f){const db=await abrirDb();await new Promise((ok,no)=>{const tx=db.transaction('pendientes','readwrite');tx.objectStore('pendientes').put(f);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)});db.close()}
+    async function borrarPendiente(id){const db=await abrirDb();await new Promise((ok,no)=>{const tx=db.transaction('pendientes','readwrite');tx.objectStore('pendientes').delete(id);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)});db.close()}
+    async function listarPendientes(){const db=await abrirDb();const filas=await new Promise((ok,no)=>{const tx=db.transaction('pendientes','readonly');const r=tx.objectStore('pendientes').getAll();r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});db.close();return filas}
+    async function autorizar(draft){const r=await llamar('autorizar_borrador_movil',{borrador_id:draft});return r.autorizacion}
+    async function subir(file,id,draft,auth){const fd=new FormData();fd.set('borrador_id',draft);fd.set('foto_id',id);fd.set('autorizacion',auth);fd.set('foto',file,file.name||'foto.jpg');const r=await fetch(api.toString()+'?accion=subir_foto_movil',{method:'POST',headers:{'x-foto-session':sesion},body:fd});const j=await r.json().catch(()=>({}));if(!r.ok)throw fallo(j,r.status);await borrarPendiente(id)}
+    async function rechazar(item,e){await guardarPendiente({...item,rechazada:e.message});aviso=' Foto rechazada, sigue guardada en este telefono: '+e.message;decir(aviso.trim(),'error')}
+    async function recuperarPendientes(){const filas=(await listarPendientes()).filter(x=>!x.rechazada);if(!filas.length)return;subiendo=true;const auths=new Map();for(const item of filas){try{if(!auths.has(item.borrador))auths.set(item.borrador,await autorizar(item.borrador));await subir(item.file,item.id,item.borrador,auths.get(item.borrador))}catch(e){if(definitivo(e)){await rechazar(item,e);continue}decir('Una foto sigue pendiente en este telefono: '+e.message,'error');break}}subiendo=false}
+    archivos.addEventListener('change',async()=>{if(!borrador||!autorizacion)return;const draft=borrador,auth=autorizacion;subiendo=true;for(const file of archivos.files){const id=crypto.randomUUID();const item={id,borrador:draft,file,creada:Date.now()};await guardarPendiente(item);const img=document.createElement('img');img.src=URL.createObjectURL(file);miniaturas.append(img);try{await subir(file,id,draft,auth)}catch(e){if(definitivo(e))await rechazar(item,e);else decir('Una foto sigue pendiente en este telefono: '+e.message,'error')}}archivos.value='';subiendo=false;await pulso()});
+    terminar.onclick=async()=>{if(!borrador)return;const pendientes=(await listarPendientes()).filter(x=>x.borrador===borrador).length;try{await llamar('terminar_borrador_movil',{borrador_id:borrador,pendientes});await pulso()}catch(e){decir(e.message,'error')}};
+    reintentar.onclick=()=>inicio();async function inicio(){reintentar.hidden=true;try{await vincular();await pulso();await recuperarPendientes();setInterval(()=>pulso().catch(()=>{}),2500)}catch(e){decir(e.message,'error');reintentar.hidden=false}}
+    inicio();
+  </script>
+</body>
+</html>
