@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'">
+<title>Copiar fotos pendientes · Bianca</title>
+<style>body{font:1rem/1.5 system-ui;margin:1rem auto;padding:0 1rem;max-width:36rem;color:#302522}section{border-top:1px solid #ccc;padding:1rem 0}code{overflow-wrap:anywhere}a{display:block;margin:.75rem 0}</style></head>
+<body><h1>Copiar fotos pendientes</h1><p>Guarda el original en Archivos. La huella SHA-256 permite comprobar si la caja recibió exactamente esa foto. Mantén abierta la pestaña de captura.</p>
+<p id="estado" role="status">Buscando en este teléfono…</p><main></main>
+<script>
+(async()=>{
+  const estado=document.querySelector('#estado'),lista=document.querySelector('main');
+  const urls=[];
+  addEventListener('pagehide',e=>{if(e.persisted)return;for(const url of urls)URL.revokeObjectURL(url);});
+  try{
+    const configurada=localStorage.getItem('bianca_foto_api');
+    if(!configurada)throw Error('Abre esta página en el mismo navegador y dirección de la captura.');
+    const host=new URL(configurada).hostname;
+    const db=await new Promise((ok,no)=>{
+      const r=indexedDB.open('bianca-fotos:'+host);
+      r.onupgradeneeded=()=>r.transaction.abort();
+      r.onsuccess=()=>ok(r.result);
+      r.onerror=()=>no(Error('No se pudo abrir la cola existente de este navegador.'));
+    });
+    let filas;
+    try{
+      filas=await new Promise((ok,no)=>{
+        const tx=db.transaction('pendientes','readonly');
+        tx.onabort=()=>no(tx.error||Error('Safari interrumpió la lectura de la cola.'));
+        const r=tx.objectStore('pendientes').getAll();
+        r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error);
+      });
+    }finally{db.close();}
+    estado.textContent=filas.length?'Fotos guardadas en este navegador: '+filas.length+'.':'Esta cola no contiene fotos pendientes.';
+    for(const item of filas){
+      const bloque=document.createElement('section');lista.append(bloque);
+      const titulo=document.createElement('strong');titulo.textContent=item.file?.name||'Foto pendiente';bloque.append(titulo);
+      const info=document.createElement('p');info.textContent='Toma '+item.id+' · Prenda '+item.borrador;bloque.append(info);
+      const motivo=document.createElement('p');motivo.textContent=item.rechazada||'Pendiente de confirmación';bloque.append(motivo);
+      const preparar=document.createElement('button');preparar.textContent='Preparar copia';bloque.append(preparar);
+      preparar.onclick=async()=>{
+        preparar.disabled=true;
+        try{
+        const bytes=await item.file.arrayBuffer();
+        if(!bytes.byteLength || bytes.byteLength!==item.file.size)throw Error();
+        const huella=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+        const codigo=document.createElement('code');codigo.textContent=huella;bloque.append(codigo);
+        const a=document.createElement('a');a.href=URL.createObjectURL(item.file);
+        urls.push(a.href);a.download=item.file.name||'foto-'+item.id;a.textContent='Guardar original ('+item.file.size+' bytes)';bloque.append(a);
+      }catch{const error=document.createElement('p');error.textContent='Safari no pudo leer este original completo. Conserva la página y revisa si guardaste el original en Fotos.';bloque.append(error);preparar.disabled=false;}
+      };
+    }
+  }catch(e){estado.textContent=e.message||'Safari no pudo leer la cola.';}
+})();
+</script></body></html>
