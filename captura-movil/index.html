@@ -7,20 +7,23 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://*.supabase.co http://localhost:* http://127.0.0.1:*">
   <title>Fotos Bianca</title>
   <style>
+    [hidden]{display:none!important}
     body{font-family:system-ui;margin:0;background:#f7f2ef;color:#2b2421}.c{max-width:560px;margin:auto;padding:20px}.card{background:white;border-radius:16px;padding:18px;box-shadow:0 8px 28px #4b302018}button,label{display:block;width:100%;box-sizing:border-box}button{border:0;border-radius:12px;padding:14px;background:#6f3f37;color:white;font-weight:700;margin-top:12px}button:disabled,input:disabled{opacity:.55}input{margin-top:12px}.muted{color:#746763;font-size:14px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}.grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px}.error{color:#9b1c1c}.ok{color:#27633b}.carga{margin:16px 0;padding:14px;border-radius:12px;background:#f7f2ef}.carga progress{display:block;width:100%;height:18px;margin-top:8px;accent-color:#6f3f37}.carga.ok{background:#edf7ef}.carga.error{background:#fff0f0}
   </style>
 </head>
 <body>
-  <main class="c"><div class="card"><h1>Fotos de la prenda</h1><p id="estado" class="muted">Vinculando con la caja...</p><section id="prenda" hidden><h2 id="titulo"></h2><p class="muted">Toma frente y espalda. Agrega detalles si la tela, bordado o cierre lo necesitan.</p><label><b>Tomar foto</b><input id="camara" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="environment"></label><label><b>Elegir de galería</b><input id="archivos" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple></label><section id="progreso" class="carga" hidden aria-live="polite"><strong id="progresoTexto"></strong><progress id="barra" max="100" value="0"></progress></section><div id="miniaturas" class="grid"></div><button id="terminar">Terminar fotos de esta prenda</button></section><p><a href="./rescate.html" target="_blank" rel="noopener">Guardar copia de las fotos pendientes</a></p><section id="sinGuardar" hidden><strong>Safari no pudo guardar estas fotos en el teléfono. Antes de salir, guarda cada original en Archivos.</strong></section><div id="revision"></div><button id="descartar" hidden>Descartar foto rechazada</button><button id="reintentar" hidden>Reintentar</button></div></main>
+  <main class="c"><div class="card"><h1>Fotos de la prenda</h1><p id="estado" class="muted">Vinculando con la caja...</p><p id="volverAnterior" hidden><a href="./" target="_blank" rel="noopener">Abrir el vínculo anterior de este navegador</a>. Comprueba el estilo y el color en la caja antes de tomar fotos.</p><section id="prenda" hidden><h2 id="titulo"></h2><p class="muted">Toma frente y espalda. Agrega detalles si la tela, bordado o cierre lo necesitan.</p><label><b>Tomar foto</b><input id="camara" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="environment"></label><label><b>Elegir de galería</b><input id="archivos" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple></label><section id="progreso" class="carga" hidden aria-live="polite"><strong id="progresoTexto"></strong><progress id="barra" max="100" value="0"></progress></section><div id="miniaturas" class="grid"></div><button id="terminar">Terminar fotos de esta prenda</button></section><p><a href="./rescate.html" target="_blank" rel="noopener">Guardar copia de las fotos pendientes</a></p><section id="sinGuardar" hidden><strong>Safari no pudo guardar estas fotos en el teléfono. Antes de salir, guarda cada original en Archivos.</strong></section><div id="revision"></div><button id="descartar" hidden>Descartar foto rechazada</button><button id="reintentar" hidden>Reintentar</button></div></main>
   <script>
     const estado=document.querySelector('#estado'),prenda=document.querySelector('#prenda'),titulo=document.querySelector('#titulo'),camara=document.querySelector('#camara'),archivos=document.querySelector('#archivos'),miniaturas=document.querySelector('#miniaturas'),terminar=document.querySelector('#terminar'),descartar=document.querySelector('#descartar'),reintentar=document.querySelector('#reintentar'),progreso=document.querySelector('#progreso'),progresoTexto=document.querySelector('#progresoTexto'),barra=document.querySelector('#barra');
     const fragmento=new URLSearchParams(location.hash.slice(1));
-    const codigo=fragmento.get('vinculo');
-    const apiEntrada=fragmento.get('api')||localStorage.getItem('bianca_foto_api')||'';
+    let codigo=fragmento.get('vinculo');
+    function leerLocal(clave){try{return localStorage.getItem(clave)}catch{return null}}
+    function guardarLocal(clave,valor){try{localStorage.setItem(clave,valor)}catch{/* La pestaña conserva la sesión en memoria. */}}
+    const apiEntrada=fragmento.get('api')||leerLocal('bianca_foto_api')||'';
     function validarApi(valor){const u=new URL(valor);const local=['localhost','127.0.0.1'].includes(u.hostname);if((u.protocol!=='https:'&&!local)||(!u.hostname.endsWith('.supabase.co')&&!local)||!u.pathname.endsWith('/functions/v1/sync-caja'))throw new Error('El enlace no apunta al servidor de Bianca');u.search='';u.hash='';return u}
-    let api;try{api=validarApi(apiEntrada);localStorage.setItem('bianca_foto_api',api.toString())}catch{api=null}
+    let api;try{api=validarApi(apiEntrada);guardarLocal('bianca_foto_api',api.toString())}catch{api=null}
     const llaveSesion=api?'bianca_foto_sesion:'+api.origin:'';
-    let sesion=llaveSesion?(localStorage.getItem(llaveSesion)||''):'',borrador='',borradorVisual='',autorizacion='',subiendo=false,aviso='',hayPendientes=false;
+    let sesion=llaveSesion?(leerLocal(llaveSesion)||''):'',borrador='',borradorVisual='',autorizacion='',subiendo=false,aviso='',hayPendientes=false;
     const decir=(m,clase='muted')=>{estado.textContent=m;estado.className=clase};
     function mostrarProgreso(recibidas,total,mensaje,clase=''){const porcentaje=total?Math.round(recibidas/total*100):0;progreso.hidden=false;progreso.className='carga '+clase;barra.value=porcentaje;progresoTexto.textContent=`${mensaje} (${porcentaje}%)`}
     function avisoPendiente(e){
@@ -34,8 +37,56 @@
     async function llamar(accion,cuerpo,token=sesion){if(!api)throw new Error('Este enlace no trae el servidor de Bianca');const r=await fetchConLimite(api.toString()+'?accion='+accion,{method:'POST',headers:{'content-type':'application/json',...(token?{'x-foto-session':token}:{})},body:JSON.stringify(cuerpo||{})},MAX_ESPERA_LLAMADA_MS,'el servidor no respondio a tiempo');const j=await r.json().catch(()=>({}));if(!r.ok)throw fallo(j,r.status);return j}
     function fallo(j,status){const e=new Error(j.error||('Error '+status));e.status=status;return e}
     const definitivo=e=>[400,403,409,410,413,415,422].includes(e.status)||(e.status===429&&/maximo de 8/.test(e.message));
-    async function vincular(){if(!codigo&&sesion)return;if(!codigo)throw new Error('Este enlace no trae un codigo de vinculacion');const r=await llamar('canjear_vinculo',{codigo},'');sesion=r.token;localStorage.setItem(llaveSesion,sesion);history.replaceState(null,'',location.pathname)}
-    async function pulso(){if(subiendo)return;const r=await llamar('estado_fotos_movil',{});if(!r.borrador){borrador='';autorizacion='';prenda.hidden=true;decir('Telefono vinculado. Abre una prenda en el POS.'+aviso,aviso?'error':'ok');return}const siguiente=r.borrador.id;if(borradorVisual&&borradorVisual!==siguiente){miniaturas.replaceChildren();progreso.hidden=true;barra.value=0;progresoTexto.textContent=''}borradorVisual=siguiente;borrador=siguiente;autorizacion=r.autorizacion;titulo.textContent=[r.borrador.tipo,r.borrador.estilo,r.borrador.color].filter(Boolean).join(' · ');prenda.hidden=false;decir(r.borrador.fotos+' fotos recibidas por la caja'+aviso,aviso?'error':'ok')}
+    // La huella identifica este QR y esta sesión juntos. Dos cajas pueden compartir el servidor.
+    async function huellaVinculo(codigoQR,token){
+      if(!globalThis.crypto?.subtle)return '';
+      try{
+        const bytes=new TextEncoder().encode(JSON.stringify([codigoQR,token]));
+        const hash=await crypto.subtle.digest('SHA-256',bytes);
+        return Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
+      }catch{return ''}
+    }
+    async function sesionDelMismoQR(codigoQR){
+      const guardada=leerLocal(llaveSesion), marca=leerLocal(llaveSesion+':vinculo');
+      return guardada && marca && await huellaVinculo(codigoQR,guardada)===marca ? guardada : '';
+    }
+    function usarSesion(token){
+      sesion=token;
+      codigo=null;
+      try{history.replaceState(null,'',location.pathname)}catch{/* El canje ya terminó. */}
+    }
+    let canjeAgotado=false;
+    async function vincular(){
+      if(!api)throw new Error('Este enlace no trae el servidor de Bianca');
+      if(!codigo){
+        if(sesion)return;
+        throw new Error('Este enlace no trae un código de vinculación. Abre el QR desde la caja.');
+      }
+      const qr=codigo;
+      const guardada=await sesionDelMismoQR(qr);
+      if(guardada){usarSesion(guardada);return}
+      const avisoQR='Este QR ya se usó o venció. Si el teléfono ya está vinculado, vuelve a su pestaña de Fotos. Para otro teléfono, pide un QR nuevo en la caja. Conserva las fotos pendientes.';
+      if(canjeAgotado)throw fallo({error:avisoQR},410);
+      let r;
+      try{r=await llamar('canjear_vinculo',{codigo:qr},'')}
+      catch(e){
+        if(e.status!==410)throw e;
+        canjeAgotado=true;
+        const otraPestana=await sesionDelMismoQR(qr);
+        if(otraPestana){usarSesion(otraPestana);return}
+        // Una sesión de la versión anterior no tiene marca. Ofrecerla por separado;
+        // nunca usarla automáticamente para el QR que acaba de ser rechazado.
+        document.querySelector('#volverAnterior').hidden=!(leerLocal(llaveSesion) && !leerLocal(llaveSesion+':vinculo') && leerLocal('bianca_foto_api')===api.toString());
+        throw fallo({error:avisoQR},410);
+      }
+      if(typeof r?.token!=='string' || !r.token)throw new Error('La caja no confirmó la vinculación.');
+      // Un fallo de almacenamiento posterior al canje no debe consumir el QR otra vez.
+      usarSesion(r.token);
+      guardarLocal(llaveSesion,sesion);
+      guardarLocal(llaveSesion+':vinculo',await huellaVinculo(qr,sesion));
+    }
+    const sinPrenda='Teléfono vinculado. En la caja, abre la prenda y pulsa «Tomar con celular».';
+    async function pulso(){if(subiendo)return;const r=await llamar('estado_fotos_movil',{});if(!r.borrador){borrador='';autorizacion='';prenda.hidden=true;decir(sinPrenda+aviso,aviso?'error':'ok');return}const siguiente=r.borrador.id;if(borradorVisual&&borradorVisual!==siguiente){miniaturas.replaceChildren();progreso.hidden=true;barra.value=0;progresoTexto.textContent=''}borradorVisual=siguiente;borrador=siguiente;autorizacion=r.autorizacion;titulo.textContent=[r.borrador.tipo,r.borrador.estilo,r.borrador.color].filter(Boolean).join(' · ');prenda.hidden=false;decir(r.borrador.fotos+' fotos recibidas por la caja'+aviso,aviso?'error':'ok')}
     async function abrirDb(){return await new Promise((ok,no)=>{const r=indexedDB.open('bianca-fotos:'+api.hostname,1);r.onupgradeneeded=()=>r.result.createObjectStore('pendientes',{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
     async function escribirCola(operar){
       const db=await abrirDb();
@@ -154,7 +205,7 @@
       const pausada=filas.find(x=>x.pausada);
       if(pausada){
         aviso=' Foto pendiente: '+pausada.rechazada+' Esta foto está en pausa. Guarda una copia y coteja la huella con la caja.';
-        decir(aviso.trim(),'error');
+        decir(!borrador && sesion ? sinPrenda+aviso : aviso.trim(),'error');
         mostrarProgreso(0,1,aviso.trim(),'error');
       }
       const rechazadas=filas.filter(x=>x.rechazada&&!x.pausada&&!rechazoHeicAnterior(x));
@@ -276,7 +327,17 @@
     terminar.onclick=async()=>{if(!borrador)return;const pendientes=(await listarPendientes()).filter(x=>x.borrador===borrador).length;if(guardandoSeleccion || pendientes || [...copiasEnMemoria.values()].some(d=>!d||d===borrador)){decir('Quedan fotos pendientes de esta prenda. Revisa las copias antes de terminar.','error');return;}if(omitidas.has(borrador)&&!confirm('Una o más tomas quedaron fuera de la prenda. ¿Terminar solo con las fotos confirmadas?'))return;try{await llamar('terminar_borrador_movil',{borrador_id:borrador,pendientes});await pulso()}catch(e){decir(e.message,'error')}};
     if(typeof addEventListener==='function')addEventListener('beforeunload',e=>{if(subiendo||guardandoSeleccion||hayPendientes||copiasEnMemoria.size){e.preventDefault();e.returnValue=''}});
     async function ciclo(){if(subiendo)return;try{await pulso();if(!subiendo)await recuperarPendientes()}catch(e){if(hayPendientes)mostrarProgreso(0,1,avisoPendiente(e),'error')}}
-    reintentar.onclick=()=>inicio();async function inicio(){reintentar.hidden=true;try{await vincular();await pulso();await recuperarPendientes();setInterval(()=>ciclo(),5000)}catch(e){decir(e.message,'error');reintentar.hidden=false}}
+    let iniciando=false,sondeo=null;
+    reintentar.onclick=()=>inicio();
+    async function inicio(){
+      if(iniciando)return;
+      iniciando=true;reintentar.hidden=true;
+      try{
+        await vincular();await pulso();await recuperarPendientes();
+        if(sondeo===null)sondeo=setInterval(()=>ciclo(),5000);
+      }catch(e){decir(e.message,'error');reintentar.hidden=false}
+      finally{iniciando=false}
+    }
     inicio();
   </script>
 </body>
