@@ -11,15 +11,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  preparar:
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
-      pages: write
-      id-token: write
+      pages: read
+    runs-on: ubuntu-latest
     steps:
       - name: Descargar repositorio
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -29,6 +26,18 @@ jobs:
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: captura-movil
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: preparar
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
       - name: Publicar pagina
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
