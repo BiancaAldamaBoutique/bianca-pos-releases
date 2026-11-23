@@ -9,10 +9,19 @@
   <style>
     [hidden]{display:none!important}
     body{font-family:system-ui;margin:0;background:#f7f2ef;color:#2b2421}.c{max-width:560px;margin:auto;padding:20px}.card{background:white;border-radius:16px;padding:18px;box-shadow:0 8px 28px #4b302018}button,label{display:block;width:100%;box-sizing:border-box}button{border:0;border-radius:12px;padding:14px;background:#6f3f37;color:white;font-weight:700;margin-top:12px}button:disabled,input:disabled{opacity:.55}input{margin-top:12px}.muted{color:#746763;font-size:14px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}.grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px}.error{color:#9b1c1c}.ok{color:#27633b}.carga{margin:16px 0;padding:14px;border-radius:12px;background:#f7f2ef}.carga progress{display:block;width:100%;height:18px;margin-top:8px;accent-color:#6f3f37}.carga.ok{background:#edf7ef}.carga.error{background:#fff0f0}
+    #anteriores{margin-top:18px;border-top:1px solid #e3d9d4;padding-top:6px}
+    #anteriores summary{padding:10px 0;cursor:pointer;color:#593a32;font-weight:600}
   </style>
 </head>
 <body>
-  <main class="c"><div class="card"><h1>Fotos de la prenda</h1><p id="estado" class="muted">Vinculando con la caja...</p><p id="volverAnterior" hidden><a href="./" target="_blank" rel="noopener">Abrir el vínculo anterior de este navegador</a>. Comprueba el estilo y el color en la caja antes de tomar fotos.</p><section id="prenda" hidden><h2 id="titulo"></h2><p class="muted">Toma frente y espalda. Agrega detalles si la tela, bordado o cierre lo necesitan.</p><label><b>Tomar foto</b><input id="camara" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="environment"></label><label><b>Elegir de galería</b><input id="archivos" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple></label><section id="progreso" class="carga" hidden aria-live="polite"><strong id="progresoTexto"></strong><progress id="barra" max="100" value="0"></progress></section><div id="miniaturas" class="grid"></div><button id="terminar">Terminar fotos de esta prenda</button></section><p><a href="./rescate.html" target="_blank" rel="noopener">Guardar copia de las fotos pendientes</a></p><section id="sinGuardar" hidden><strong>Safari no pudo guardar estas fotos en el teléfono. Antes de salir, guarda cada original en Archivos.</strong></section><div id="revision"></div><button id="descartar" hidden>Descartar foto rechazada</button><button id="reintentar" hidden>Reintentar</button></div></main>
+  <main class="c"><div class="card"><h1>Fotos de la prenda</h1><p id="estado" class="muted">Vinculando con la caja...</p><p id="volverAnterior" hidden><a href="./" target="_blank" rel="noopener">Abrir el vínculo anterior de este navegador</a>. Comprueba el estilo y el color en la caja antes de tomar fotos.</p><section id="prenda" hidden><h2 id="titulo"></h2><p class="muted">Toma frente y espalda. Agrega detalles si la tela, bordado o cierre lo necesitan.</p><label><b>Tomar foto</b><input id="camara" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="environment"></label><label><b>Elegir de galería</b><input id="archivos" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple></label><section id="progreso" class="carga" hidden aria-live="polite"><strong id="progresoTexto"></strong><progress id="barra" max="100" value="0"></progress></section><div id="miniaturas" class="grid"></div><button id="terminar">Terminar fotos de esta prenda</button></section><p id="rescateActual"><a href="./rescate.html" target="_blank" rel="noopener">Guardar copia de las fotos pendientes</a></p><section id="sinGuardar" hidden><strong>Safari no pudo guardar estas fotos en el teléfono. Antes de salir, guarda cada original en Archivos.</strong></section><div id="revision"></div><button id="descartar" hidden>Descartar foto rechazada</button><button id="reintentar" hidden>Reintentar</button>
+    <details id="anteriores" hidden>
+      <summary id="cantidadAnteriores">Fotos anteriores por recuperar</summary>
+      <p>Guarda una copia en Archivos y coteja su huella con la caja antes de reintentar.</p>
+      <a href="./rescate.html" target="_blank" rel="noopener">Guardar copia de las fotos anteriores</a>
+      <p id="resultadoAnterior" role="status"></p>
+      <div id="revisionAnterior"></div>
+    </details></div></main>
   <script>
     const estado=document.querySelector('#estado'),prenda=document.querySelector('#prenda'),titulo=document.querySelector('#titulo'),camara=document.querySelector('#camara'),archivos=document.querySelector('#archivos'),miniaturas=document.querySelector('#miniaturas'),terminar=document.querySelector('#terminar'),descartar=document.querySelector('#descartar'),reintentar=document.querySelector('#reintentar'),progreso=document.querySelector('#progreso'),progresoTexto=document.querySelector('#progresoTexto'),barra=document.querySelector('#barra');
     const fragmento=new URLSearchParams(location.hash.slice(1));
@@ -112,7 +121,7 @@
           tx.onabort=()=>no(tx.error||new Error('Safari interrumpió la lectura.'));
           const r=tx.objectStore('pendientes').getAll();
           r.onsuccess=()=>ok(r.result.map(f=>f.versionCola===2?f:{
-            ...f,pausada:true,rechazada:f.rechazada||'Esta toma quedó pendiente en la versión anterior.'
+            ...f,anterior:true,pausada:true,rechazada:f.rechazada||'Esta toma quedó pendiente en la versión anterior.'
           }));
           r.onerror=()=>no(r.error);
         });
@@ -179,17 +188,25 @@
       const filas=await listarPendientes();
       const revision=document.querySelector('#revision');
       const pausadas=filas.filter(x=>x.pausada);
-      const clave=JSON.stringify(pausadas.map(x=>[x.id,x.rechazada]));
+      const anteriores=pausadas.filter(x=>x.anterior);
+      const panel=document.querySelector('#anteriores');
+      panel.hidden=!anteriores.length;
+      if(panel.hidden)panel.open=false;
+      document.querySelector('#cantidadAnteriores').textContent='Fotos anteriores por recuperar ('+anteriores.length+')';
+      document.querySelector('#rescateActual').hidden=!filas.some(x=>!x.anterior);
+      const revisionAnterior=document.querySelector('#revisionAnterior');
+      const clave=JSON.stringify(pausadas.map(x=>[x.id,x.rechazada,!!x.anterior]));
       if(clave!==revisionClave){
-        revisionClave=clave;revision.replaceChildren();
+        revisionClave=clave;revision.replaceChildren();revisionAnterior.replaceChildren();
         for(const item of pausadas){
+          const destino=item.anterior?revisionAnterior:revision;
           const boton=document.createElement('button');
           boton.textContent='Comprobar y reintentar '+(item.file.name||'foto')+' · '+item.id;
           boton.onclick=async()=>{
             if(subiendo || !confirm('¿Guardaste una copia y cotejaste su huella con la caja? Se verificará la misma toma con el mismo identificador.'))return;
             await recuperarPendientes(item.id);
           };
-          revision.append(boton);
+          destino.append(boton);
           const label=document.createElement('label'),copia=document.createElement('input');
           label.textContent='Para retirar esta toma, selecciona su copia guardada en Archivos:';
           copia.type='file';copia.onchange=async()=>{
@@ -199,12 +216,12 @@
             catch{decir('No se pudo verificar la copia. Conserva ambas.','error');}
             finally{subiendo=false;copia.value='';}
           };
-          label.append(copia);revision.append(label);
+          label.append(copia);destino.append(label);
         }
       }
-      const pausada=filas.find(x=>x.pausada);
-      if(pausada){
-        aviso=' Foto pendiente: '+pausada.rechazada+' Esta foto está en pausa. Guarda una copia y coteja la huella con la caja.';
+      const actual=filas.find(x=>!x.anterior && x.rechazada && !rechazoHeicAnterior(x));
+      if(actual){
+        aviso=(actual.pausada?' Foto pendiente: ':' Foto rechazada: ')+actual.rechazada+' Guarda una copia y coteja la huella con la caja.';
         decir(!borrador && sesion ? sinPrenda+aviso : aviso.trim(),'error');
         mostrarProgreso(0,1,aviso.trim(),'error');
       }
@@ -214,8 +231,12 @@
       return rechazadas;
     }
     async function rechazar(item,e){
-      const pausada=[400,403,409,422].includes(e.status);
+      const pausada=item.anterior || [400,403,409,422].includes(e.status);
       await guardarPendiente({...item,rechazada:e.message,pausada});
+      if(item.anterior){
+        document.querySelector('#resultadoAnterior').textContent='La toma anterior sigue guardada: '+e.message;
+        await actualizarDescartes();return;
+      }
       aviso=' Foto rechazada, sigue guardada en este telefono: '+e.message;
       decir(aviso.trim(),'error');mostrarProgreso(0,1,aviso.trim(),'error');await actualizarDescartes();
     }
@@ -224,30 +245,38 @@
       subiendo=true;bloquearCarga(true);
       try{
         const todas=await listarPendientes();
-        const filas=todas.filter(x=>soloId?x.id===soloId&&x.pausada:!x.rechazada||rechazoHeicAnterior(x));
+        const filas=todas.filter(x=>soloId?x.id===soloId&&x.pausada:!x.anterior&&(!x.rechazada||rechazoHeicAnterior(x)));
         hayPendientes=todas.length>0;
         if(!filas.length){await actualizarDescartes();return;}
         let recibidas=0;
         const auths=new Map();
         for(let item of filas){
           try{
-            mostrarProgreso(recibidas,filas.length,'Preparando el reintento. Conserva esta página abierta.');
+            if(item.anterior)document.querySelector('#resultadoAnterior').textContent='Comprobando la toma anterior…';
+            else mostrarProgreso(recibidas,filas.length,'Preparando el reintento. Conserva esta página abierta.');
             item=await preparar(item);
             if(!auths.has(item.borrador))auths.set(item.borrador,await autorizar(item.borrador));
             await subir(item,item.borrador,auths.get(item.borrador));
+            if(item.anterior)document.querySelector('#resultadoAnterior').textContent='La caja confirmó la toma anterior.';
             recibidas++;
           }catch(e){
             if(definitivo(e)){await rechazar(item,e);continue;}
+            if(item.anterior){document.querySelector('#resultadoAnterior').textContent='La toma sigue guardada. '+e.message;break;}
             mostrarProgreso(recibidas,filas.length,avisoPendiente(e),'error');
             decir('Una foto sigue pendiente en este telefono: '+e.message,'error');break;
           }
         }
         const restantes=await listarPendientes();hayPendientes=restantes.length>0;
-        if(!hayPendientes && !copiasEnMemoria.size){
-          aviso='';mostrarProgreso(filas.length,filas.length,filas.length+' de '+filas.length+' fotos confirmadas. Ya puedes cerrar esta pagina.','ok');
+        if(!filas[0].anterior && !restantes.some(x=>!x.anterior) && !copiasEnMemoria.size){
+          confirmarProgreso(filas.length,hayPendientes);
         }
         await actualizarDescartes();
       }finally{subiendo=false;bloquearCarga(false);}
+    }
+    function confirmarProgreso(total,quedanAnteriores){
+      aviso='';
+      const mensaje=total+' de '+total+' fotos confirmadas.'+(quedanAnteriores?'':' Ya puedes cerrar esta pagina.');
+      mostrarProgreso(total,total,mensaje,'ok');
     }
     const copiasEnMemoria=new Map();
     function copiaSinGuardar(item){
@@ -294,8 +323,8 @@
       const restantes=await listarPendientes();hayPendientes=restantes.length>0;
       if(copiasEnMemoria.size){
         mostrarProgreso(recibidas,files.length,'Hay originales pendientes de guardar en Archivos. Mantén abierta esta página.','error');
-      }else if(!hayPendientes){
-        aviso='';mostrarProgreso(files.length,files.length,files.length+' de '+files.length+' fotos confirmadas. Ya puedes cerrar esta pagina.','ok');
+      }else if(recibidas===files.length && !restantes.some(x=>!x.anterior)){
+        confirmarProgreso(files.length,hayPendientes);
       }
       await actualizarDescartes();
     }
@@ -326,7 +355,17 @@
     descartar.onclick=async()=>{if(!confirm('¿Ya guardaste y abriste una copia de cada foto rechazada en Archivos? Esto elimina las rechazadas de este teléfono.'))return;for(const item of await actualizarDescartes())await borrarPendiente(item.id);aviso='';await actualizarDescartes();await pulso()};
     terminar.onclick=async()=>{if(!borrador)return;const pendientes=(await listarPendientes()).filter(x=>x.borrador===borrador).length;if(guardandoSeleccion || pendientes || [...copiasEnMemoria.values()].some(d=>!d||d===borrador)){decir('Quedan fotos pendientes de esta prenda. Revisa las copias antes de terminar.','error');return;}if(omitidas.has(borrador)&&!confirm('Una o más tomas quedaron fuera de la prenda. ¿Terminar solo con las fotos confirmadas?'))return;try{await llamar('terminar_borrador_movil',{borrador_id:borrador,pendientes});await pulso()}catch(e){decir(e.message,'error')}};
     if(typeof addEventListener==='function')addEventListener('beforeunload',e=>{if(subiendo||guardandoSeleccion||hayPendientes||copiasEnMemoria.size){e.preventDefault();e.returnValue=''}});
-    async function ciclo(){if(subiendo)return;try{await pulso();if(!subiendo)await recuperarPendientes()}catch(e){if(hayPendientes)mostrarProgreso(0,1,avisoPendiente(e),'error')}}
+    async function ciclo(){
+      if(subiendo)return;
+      try{await pulso();if(!subiendo)await recuperarPendientes()}
+      catch(e){
+        decir('No se pudo actualizar la prenda: '+e.message+aviso,'error');
+        if(hayPendientes){
+          try{if((await listarPendientes()).some(x=>!x.anterior))mostrarProgreso(0,1,avisoPendiente(e),'error')}
+          catch{/* El aviso de lectura permanece en pantalla. */}
+        }
+      }
+    }
     let iniciando=false,sondeo=null;
     reintentar.onclick=()=>inicio();
     async function inicio(){
